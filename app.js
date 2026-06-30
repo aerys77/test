@@ -915,13 +915,20 @@ async function sendMessage() {
   const userContent = pendingImage ? [{ type: 'text', text: content || ' ' }, { type: 'image_url', image_url: { url: pendingImage.dataUrl } }] : content;
   const userMsg = { id: Date.now().toString(), role: 'user', content: userContent, topicId: null };
   const userText = pendingImage ? (content || '📷 圖片') : content;
-  let convId = activeId;
-  if (!convId) {
-    const newConv = { id: Date.now().toString(), title: userText.slice(0, 30) + (userText.length > 30 ? '...' : ''), preview: userText.slice(0, 50), date: '今天', messages: [userMsg], updatedAt: new Date().toISOString(), deleted: false };
-    conversations.unshift(newConv); activeId = newConv.id; convId = newConv.id;
-  } else {
-    conversations = conversations.map(c => c.id === convId ? { ...c, messages: [...c.messages, userMsg], updatedAt: new Date().toISOString() } : c);
-  }
+    let convId = activeId;
+    if (!convId && currentView === 'topic' && currentTopicId) {
+      const recentConv = conversations.find(c => !c.deleted && c.messages.some(m => m.topicId === currentTopicId));
+      if (recentConv) {
+        convId = recentConv.id;
+        activeId = convId;
+      }
+    }
+    if (!convId) {
+      const newConv = { id: Date.now().toString(), title: userText.slice(0, 30) + (userText.length > 30 ? '...' : ''), preview: userText.slice(0, 50), date: '今天', messages: [userMsg], updatedAt: new Date().toISOString(), deleted: false };
+      conversations.unshift(newConv); activeId = newConv.id; convId = newConv.id;
+    } else {
+      conversations = conversations.map(c => c.id === convId ? { ...c, messages: [...c.messages, userMsg], updatedAt: new Date().toISOString() } : c);
+    }
   window._inputValue = ''; pendingImage = null; isTyping = true; isSending = true; sendBtn.disabled = true;
   renderSidebar(); renderMain();
   requestAnimationFrame(() => { const ta = document.getElementById('chatInput'); if (ta) ta.focus(); });
