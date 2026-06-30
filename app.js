@@ -62,7 +62,6 @@ let isTyping = false;
 let isSending = false;
 let hoveredConv = null;
 let writingMode = false;
-let isPaused = false;
 let searchQuery = '';
 let pendingImage = null;
 let apiKey = '';
@@ -193,7 +192,7 @@ function updateFloatingDate() {
 
 function saveData() {
   localStorage.setItem('lilith_chat_data', JSON.stringify({
-    conversations, activeId, writingMode, isPaused, apiKey, baseUrl, model, gasUrl,
+    conversations, activeId, writingMode, apiKey, baseUrl, model, gasUrl,
     currentView, currentTopicId
   }));
 }
@@ -306,7 +305,6 @@ function loadData() {
       conversations = data.conversations || [];
       activeId = data.activeId || null;
       writingMode = data.writingMode || false;
-      isPaused = data.isPaused || false;
       apiKey = data.apiKey || '';
       baseUrl = data.baseUrl || 'https://apihub.agnes-ai.com/v1';
       model = data.model || 'agnes-2.0-flash';
@@ -510,7 +508,6 @@ function openSettings() {
   document.getElementById('modelSelect').value = model;
   document.getElementById('baseUrlInput').value = baseUrl;
   document.getElementById('writingModeToggle').checked = writingMode;
-  document.getElementById('pauseToggle').checked = isPaused;
   document.getElementById('gasUrlInput').value = gasUrl;
   document.getElementById('settingsOverlay').classList.add('open');
   updateModeBadge();
@@ -542,28 +539,16 @@ function updateModeBadge() {
   else { badge.className = 'mode-badge normal'; badge.textContent = '一般模式'; }
 }
 
-function updatePauseUI() {
-  // 更新輸入列 placeholder
+function updateInputUI() {
   const textarea = document.getElementById('chatInput');
-  if (textarea) {
-    textarea.placeholder = isPaused ? '⏸ AI 已暫停，訊息僅儲存不回覆' : '輸入訊息...';
-  }
-  // 更新 send button 外觀
+  if (textarea) textarea.placeholder = '💬 輸入 @莉莉絲 來召喚我';
   const sendBtn = document.getElementById('sendBtn');
-  if (sendBtn) {
-    sendBtn.title = isPaused ? '已暫停（僅儲存訊息）' : '發送';
-  }
+  if (sendBtn) sendBtn.title = '僅 @莉莉絲 觸發回覆';
 }
 
 function toggleWritingMode() {
   writingMode = document.getElementById('writingModeToggle').checked;
   updateModeBadge();
-}
-
-function togglePause() {
-  isPaused = document.getElementById('pauseToggle').checked;
-  saveData();
-  updatePauseUI();
 }
 
 function saveSettings() {
@@ -836,8 +821,9 @@ function renderInputBar() {
   const canSend = inputVal.trim().length > 0 || !!pendingImage;
   let previewHtml = '';
   if (pendingImage) previewHtml = '<div class="img-preview-bar"><div class="img-preview-item"><img class="img-preview-thumb" src="' + pendingImage.dataUrl + '" alt="preview" /><span class="img-preview-name">' + escapeHtml(pendingImage.fileName) + '</span><button class="img-preview-remove" onclick="removeImage()" title="移除圖片">&times;</button></div></div>';
-  const placeholder = isPaused ? '⏸ AI 已暫停，訊息僅儲存不回覆' : '輸入訊息...';
-  return '<div class="input-wrap"><div class="input-container">' + previewHtml + '<textarea id="chatInput" class="input-textarea" rows="1" placeholder="' + placeholder + '" oninput="onInputChange(this)" onkeydown="onInputKeydown(event)">' + escapeHtml(inputVal) + '</textarea><div class="input-toolbar"><div class="input-toolbar-left"><button class="btn-toolbar" onclick="triggerImageUpload()" title="上傳圖片">' + icons.image + '</button><button class="btn-toolbar">' + icons.messageSquare + '</button></div><div class="input-toolbar-right"><button id="sendBtn" class="btn-send ' + (canSend ? 'active' : 'inactive') + '" ' + (canSend ? '' : 'disabled') + (isPaused ? ' title="已暫停（僅儲存訊息）"' : '') + ' onclick="sendMessage()">' + icons.send + '</button></div></div></div></div>';
+  let placeholder = '💬 輸入 @莉莉絲 來召喚我';
+  const sendTitle = '僅 @莉莉絲 觸發回覆';
+  return '<div class="input-wrap"><div class="input-container">' + previewHtml + '<textarea id="chatInput" class="input-textarea" rows="1" placeholder="' + placeholder + '" oninput="onInputChange(this)" onkeydown="onInputKeydown(event)">' + escapeHtml(inputVal) + '</textarea><div class="input-toolbar"><div class="input-toolbar-left"><button class="btn-toolbar" onclick="triggerImageUpload()" title="上傳圖片">' + icons.image + '</button><button class="btn-toolbar">' + icons.messageSquare + '</button></div><div class="input-toolbar-right"><button id="sendBtn" class="btn-send ' + (canSend ? 'active' : 'inactive') + '" ' + (canSend ? '' : 'disabled') + ' title="' + sendTitle + '" onclick="sendMessage()">' + icons.send + '</button></div></div></div></div>';
 }
 
 function updateInputBarOnly() {
@@ -925,7 +911,6 @@ async function sendMessage() {
   if (!textarea) return;
   const content = textarea.value.trim();
   if ((!content && !pendingImage) || isSending) return;
-  if (!apiKey && !isPaused) { openSettings(); return; }
   const wasWelcome = !getActiveConv() && !activeId && currentView === 'home';
   const userContent = pendingImage ? [{ type: 'text', text: content || ' ' }, { type: 'image_url', image_url: { url: pendingImage.dataUrl } }] : content;
   const userMsg = { id: Date.now().toString(), role: 'user', content: userContent, topicId: null };
@@ -944,21 +929,18 @@ async function sendMessage() {
     const conv = getActiveConv();
     if (!conv) throw new Error('對話已遺失');
 
-    // 暫停模式：僅儲存訊息，不呼叫任何 API
-    if (isPaused) {
-      const pauseMsg = '⏸ AI 已暫停，這條訊息已儲存但未回覆。前往設定關閉暫停即可恢復。';
-      conversations = conversations.map(c => c.id === convId ? {
-        ...c, messages: [...c.messages, { id: Date.now().toString() + 1, role: 'assistant', content: pauseMsg }],
-        updatedAt: new Date().toISOString()
-      } : c);
+    // 背景模式：未提及 @莉莉絲 時靜默儲存，不回覆
+    if (!content.includes('@莉莉絲')) {
       isTyping = false; isSending = false;
-      // 從全部訊息發送 → 保持在全部訊息檢視
       if (wasWelcome) activeId = null;
       saveData(); saveTopics(); renderSidebar(); renderMain();
       requestAnimationFrame(() => { const ta = document.getElementById('chatInput'); if (ta) ta.focus(); });
       pushToGAS();
-      return; // 直接返回，不走 API
+      return;
     }
+
+    // 需要 API Key 才能回覆
+    if (!apiKey) { openSettings(); isTyping = false; isSending = false; return; }
 
     // PHASE 1: 段落分類（僅純文字，非圖片）
     let classifications = [];
