@@ -952,6 +952,8 @@ async function sendMessage() {
         updatedAt: new Date().toISOString()
       } : c);
       isTyping = false; isSending = false;
+      // 從全部訊息發送 → 保持在全部訊息檢視
+      if (wasWelcome) activeId = null;
       saveData(); saveTopics(); renderSidebar(); renderMain();
       requestAnimationFrame(() => { const ta = document.getElementById('chatInput'); if (ta) ta.focus(); });
       pushToGAS();
