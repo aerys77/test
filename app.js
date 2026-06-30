@@ -144,6 +144,53 @@ function scrollToBottom(force = false) {
   if (force || distFromBottom < 150) area.scrollTop = area.scrollHeight;
 }
 
+// ── 日期輔助 ──
+function getMsgDate(msg) {
+  let ts;
+  // 從 msg.id 解析時間戳（格式：Date.now() 或 Date.now() + '1'）
+  if (msg.id && /^\d+$/.test(msg.id.replace(/1$/, '').slice(0, 13))) {
+    ts = parseInt(msg.id.slice(0, 13), 10);
+  }
+  // Fallback: 從所屬 conversation 的 updatedAt
+  if (!ts && msg.convId) {
+    const conv = conversations.find(c => c.id === msg.convId);
+    if (conv && conv.updatedAt) ts = new Date(conv.updatedAt).getTime();
+  }
+  return new Date(ts || Date.now());
+}
+
+function formatMsgDate(date) {
+  const y = date.getFullYear().toString().slice(-2);
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
+}
+
+function updateFloatingDate() {
+  const el = document.getElementById('floatingDate');
+  const area = document.getElementById('messagesArea');
+  if (!el || !area) return;
+  const msgs = area.querySelectorAll('.msg-row[data-date]');
+  if (msgs.length === 0) { el.textContent = ''; el.classList.remove('show'); return; }
+  // 找到第一個在可視範圍頂部的訊息
+  let topDate = null;
+  for (const m of msgs) {
+    const rect = m.getBoundingClientRect();
+    const areaRect = area.getBoundingClientRect();
+    if (rect.bottom >= areaRect.top + 8) {
+      topDate = m.getAttribute('data-date');
+      break;
+    }
+  }
+  // 若全部在下方，取最後一個（已捲過頭）
+  if (!topDate && msgs.length > 0) topDate = msgs[msgs.length - 1].getAttribute('data-date');
+  const text = topDate || '';
+  if (el.textContent !== text) {
+    el.textContent = text;
+    el.classList.toggle('show', !!text);
+  }
+}
+
 function saveData() {
   localStorage.setItem('lilith_chat_data', JSON.stringify({
     conversations, activeId, writingMode, isPaused, apiKey, baseUrl, model, gasUrl,
@@ -706,7 +753,14 @@ function renderMain() {
   }
 
   let messagesHtml = '';
+  let lastDate = '';
   msgs.forEach(msg => {
+    const dateStr = formatMsgDate(getMsgDate(msg));
+    // 跨日分隔線（與前一個訊息不同日才顯示）
+    if (dateStr !== lastDate) {
+      messagesHtml += '<div class="date-separator" data-date="' + dateStr + '"><span>' + dateStr + '</span></div>';
+      lastDate = dateStr;
+    }
     if (msg.role === 'user') {
       let textContent = msg.content, imageHtml = '';
       if (Array.isArray(msg.content)) {
@@ -715,17 +769,27 @@ function renderMain() {
         const imagePart = msg.content.find(p => p.type === 'image_url');
         if (imagePart) imageHtml = '<img class="msg-image" src="' + imagePart.image_url.url + '" alt="user image" />';
       }
-      messagesHtml += '<div class="msg-row msg-row-user"><div class="msg-bubble msg-bubble-user">' + imageHtml + (textContent ? '<div class="msg-text-user">' + escapeHtml(textContent) + '</div>' : '') + '</div></div>';
+      messagesHtml += '<div class="msg-row msg-row-user" data-date="' + dateStr + '"><div class="msg-bubble msg-bubble-user">' + imageHtml + (textContent ? '<div class="msg-text-user">' + escapeHtml(textContent) + '</div>' : '') + '</div></div>';
     } else {
       let displayContent = msg.content;
       if (displayContent) { displayContent = displayContent.replace(/^[(害羞|生氣|難過|驚訝)]\s*/, ''); displayContent = fixSelfReference(displayContent); }
-      messagesHtml += '<div class="msg-row msg-row-ai"><div class="msg-bubble msg-bubble-ai"><div class="msg-text-ai">' + marked.parse(displayContent || '', { breaks: true }) + '</div><button class="btn-dl-msg" onclick="downloadMessage(\'' + msg.id + '\')" title="下載此回覆">' + icons.download + '</button></div></div>';
+      messagesHtml += '<div class="msg-row msg-row-ai" data-date="' + dateStr + '"><div class="msg-bubble msg-bubble-ai"><div class="msg-text-ai">' + marked.parse(displayContent || '', { breaks: true }) + '</div><button class="btn-dl-msg" onclick="downloadMessage(\'' + msg.id + '\')" title="下載此回覆">' + icons.download + '</button></div></div>';
     }
   });
   if (isTyping) messagesHtml += '<div class="typing-row"><div class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div>';
   const syncBtn = currentView === 'topic' ? '' : '<button class="btn-more" onclick="syncMemoryNow()" title="推送上雲端">' + icons.cloudUpload + '</button>';
-  mainContent.innerHTML = '<div class="chat-header"><h2 class="chat-title' + (currentView === 'topic' ? '"' : '" ondblclick="startRename()"') + '>' + escapeHtml(headerTitle) + '</h2><div class="chat-header-btns">' + syncBtn + '<button class="btn-more" onclick="openImport()" title="匯入對話">' + icons.importIcon + '</button></div></div><div class="messages-area" id="messagesArea"><div class="space-y-6">' + messagesHtml + '</div><div id="scrollAnchor"></div></div>' + renderInputBar();
-  requestAnimationFrame(() => { const a = document.getElementById('scrollAnchor'); if (a) a.scrollIntoView({ block: 'end' }); });
+  mainContent.innerHTML = '<div class="chat-header"><h2 class="chat-title' + (currentView === 'topic' ? '"' : '" ondblclick="startRename()"') + '>' + escapeHtml(headerTitle) + '</h2><div class="chat-header-btns">' + syncBtn + '<button class="btn-more" onclick="openImport()" title="匯入對話">' + icons.importIcon + '</button></div></div><div id="floatingDate" class="floating-date"></div><div class="messages-area" id="messagesArea"><div class="space-y-6">' + messagesHtml + '</div><div id="scrollAnchor"></div></div>' + renderInputBar();
+  // 初始化 floating date 並掛上 scroll 監聽
+  requestAnimationFrame(() => {
+    updateFloatingDate();
+    const area = document.getElementById('messagesArea');
+    if (area) {
+      area.removeEventListener('scroll', updateFloatingDate);
+      area.addEventListener('scroll', updateFloatingDate, { passive: true });
+    }
+    const a = document.getElementById('scrollAnchor');
+    if (a) a.scrollIntoView({ block: 'end' });
+  });
 }
 
 // ── 傳統單一對話渲染（保留向後相容） ──

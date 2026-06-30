@@ -85,6 +85,38 @@ body {
   background: transparent; font-family: inherit;
 }
 .btn-settings:hover { background: #1e1e20; color: #e8eaed; }
+
+/* ── Floating Date Header ── */
+.floating-date {
+  position: sticky; top: 0; z-index: 15;
+  text-align: center; padding: 6px 0; margin: 0;
+  font-size: 12px; font-weight: 500; color: #9aa0a6;
+  background: linear-gradient(180deg, #1c1c1e 60%, transparent);
+  letter-spacing: 0.5px; user-select: none;
+  transition: opacity 0.2s;
+  opacity: 0; height: 0; overflow: hidden;
+}
+.floating-date.show { opacity: 1; height: auto; }
+body.light .floating-date { background: linear-gradient(180deg, #ffffff 60%, transparent); color: #5f6368; }
+
+/* ── Date Separator ── */
+.date-separator {
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px 0 8px; gap: 12px;
+}
+.date-separator::before,
+.date-separator::after {
+  content: ''; flex: 1; height: 1px;
+  background: rgba(255,255,255,0.06);
+}
+.date-separator span {
+  font-size: 11px; font-weight: 500; color: #5f6368;
+  white-space: nowrap; letter-spacing: 0.5px;
+}
+body.light .date-separator::before,
+body.light .date-separator::after { background: rgba(0,0,0,0.08); }
+body.light .date-separator span { color: #9aa0a6; }
+
 .chat-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 24px; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0;
