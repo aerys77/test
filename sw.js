@@ -2,6 +2,8 @@
 const CACHE = 'lilith-v1';
 const STATIC_ASSETS = [
   'index.html',
+  'style.css',
+  'app.js',
   'manifest.json',
   'images/pwa-icon.svg'
 ];
