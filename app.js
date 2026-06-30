@@ -999,7 +999,10 @@ async function sendMessage() {
     const errMsg = '喂…笨蛋老闆，好像出錯了（' + e.message + '）。要不要檢查一下 API Key 或網路連線？';
     conversations = conversations.map(c => c.id === convId ? { ...c, messages: [...c.messages, { id: Date.now().toString() + 1, role: 'assistant', content: errMsg }], updatedAt: new Date().toISOString() } : c);
   } finally {
-    isTyping = false; isSending = false; saveData(); saveTopics(); renderSidebar();
+    isTyping = false; isSending = false;
+    // 從「全部訊息」發送 → 保持在全部訊息檢視，不跳轉到單一對話
+    if (wasWelcome) activeId = null;
+    saveData(); saveTopics(); renderSidebar();
     if (wasWelcome || !getActiveConv()) renderMain(); else updateInputBarOnly();
     requestAnimationFrame(() => { const ta = document.getElementById('chatInput'); if (ta) { ta.focus(); const len = ta.value.length; ta.setSelectionRange(len, len); } });
     pushToGAS();

@@ -496,6 +496,9 @@ body.light .welcome-import-btn:hover { background: rgba(26,115,232,0.06); border
   transition: opacity 0.3s ease;
 }
 .sidebar-backdrop.open { display: block; opacity: 1; }
+@media (min-width: 768px) {
+  .sidebar-backdrop, .sidebar-backdrop.open { display: none !important; }
+}
 .toggle-btn { z-index: 20; }
 
 @media (max-width: 767px) {
