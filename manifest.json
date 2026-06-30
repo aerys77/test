@@ -1,0 +1,30 @@
+{
+  "name": "莉莉絲 — 您的傲嬌專屬助理",
+  "short_name": "莉莉絲",
+  "description": "您的傲嬌專屬助理 · 嘴上嫌棄但最可靠的夥伴",
+  "start_url": "GAS_Index.html",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#131314",
+  "theme_color": "#131314",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "images/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "share_target": {
+    "action": "GAS_Index.html?shared=1",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
