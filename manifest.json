@@ -2,7 +2,7 @@
   "name": "莉莉絲 — 您的傲嬌專屬助理",
   "short_name": "莉莉絲",
   "description": "您的傲嬌專屬助理 · 嘴上嫌棄但最可靠的夥伴",
-  "start_url": "GAS_Index.html",
+  "start_url": "index.html",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait",
@@ -18,7 +18,7 @@
     }
   ],
   "share_target": {
-    "action": "GAS_Index.html?shared=1",
+    "action": "index.html?shared=1",
     "method": "GET",
     "enctype": "application/x-www-form-urlencoded",
     "params": {

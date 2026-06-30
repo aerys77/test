@@ -1,7 +1,7 @@
 /* ===== 莉莉絲 PWA — Service Worker ===== */
 const CACHE = 'lilith-v1';
 const STATIC_ASSETS = [
-  'GAS_Index.html',
+  'index.html',
   'manifest.json',
   'images/pwa-icon.svg'
 ];
