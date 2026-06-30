@@ -62,6 +62,7 @@ let isTyping = false;
 let isSending = false;
 let hoveredConv = null;
 let writingMode = false;
+let isPaused = false;
 let searchQuery = '';
 let pendingImage = null;
 let apiKey = '';
@@ -145,7 +146,7 @@ function scrollToBottom(force = false) {
 
 function saveData() {
   localStorage.setItem('lilith_chat_data', JSON.stringify({
-    conversations, activeId, writingMode, apiKey, baseUrl, model, gasUrl,
+    conversations, activeId, writingMode, isPaused, apiKey, baseUrl, model, gasUrl,
     currentView, currentTopicId
   }));
 }
@@ -258,6 +259,7 @@ function loadData() {
       conversations = data.conversations || [];
       activeId = data.activeId || null;
       writingMode = data.writingMode || false;
+      isPaused = data.isPaused || false;
       apiKey = data.apiKey || '';
       baseUrl = data.baseUrl || 'https://apihub.agnes-ai.com/v1';
       model = data.model || 'agnes-2.0-flash';
@@ -292,7 +294,7 @@ function loadData() {
       .withFailureHandler(() => {})
       .getConfig();
   }
-  if (gasUrl) setTimeout(pullFromGAS, 300);
+  if (gasUrl) { setTimeout(() => { pullFromGAS(); startPeriodicSync(); }, 300); }
 }
 
 // ── 雲端同步 ──
@@ -433,6 +435,7 @@ function syncMemoryNow() {
   // 先推後拉，確保雙向同步
   pushToGAS();
   pullFromGAS();
+  startPeriodicSync();
 }
 
 function updateSyncStatus(msg) {
@@ -443,7 +446,15 @@ function updateSyncStatus(msg) {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && (isGAS() || (gasUrl && navigator.onLine))) pushToGAS();
+  if (document.hidden) {
+    // 頁面隱藏時：停止定期同步
+    stopPeriodicSync();
+    // 推送本地變更
+    if (isGAS() || (gasUrl && navigator.onLine)) pushToGAS();
+  } else {
+    // 頁面回到前景：先拉取遠端最新資料，再啟動定期同步
+    if (isGAS() || (gasUrl && navigator.onLine)) { pullFromGAS(); startPeriodicSync(); }
+  }
 });
 
 // ── 設定面板 ──
@@ -452,6 +463,7 @@ function openSettings() {
   document.getElementById('modelSelect').value = model;
   document.getElementById('baseUrlInput').value = baseUrl;
   document.getElementById('writingModeToggle').checked = writingMode;
+  document.getElementById('pauseToggle').checked = isPaused;
   document.getElementById('gasUrlInput').value = gasUrl;
   document.getElementById('settingsOverlay').classList.add('open');
   updateModeBadge();
@@ -483,9 +495,28 @@ function updateModeBadge() {
   else { badge.className = 'mode-badge normal'; badge.textContent = '一般模式'; }
 }
 
+function updatePauseUI() {
+  // 更新輸入列 placeholder
+  const textarea = document.getElementById('chatInput');
+  if (textarea) {
+    textarea.placeholder = isPaused ? '⏸ AI 已暫停，訊息僅儲存不回覆' : '輸入訊息...';
+  }
+  // 更新 send button 外觀
+  const sendBtn = document.getElementById('sendBtn');
+  if (sendBtn) {
+    sendBtn.title = isPaused ? '已暫停（僅儲存訊息）' : '發送';
+  }
+}
+
 function toggleWritingMode() {
   writingMode = document.getElementById('writingModeToggle').checked;
   updateModeBadge();
+}
+
+function togglePause() {
+  isPaused = document.getElementById('pauseToggle').checked;
+  saveData();
+  updatePauseUI();
 }
 
 function saveSettings() {
@@ -495,8 +526,9 @@ function saveSettings() {
   writingMode = document.getElementById('writingModeToggle').checked;
   gasUrl = document.getElementById('gasUrlInput').value.trim();
   saveData();
-  // 儲存 URL 後立即拉取遠端資料
-  if (gasUrl) setTimeout(pullFromGAS, 300);
+  // 儲存 URL 後立即拉取遠端資料並啟動定期同步
+  if (gasUrl) { setTimeout(pullFromGAS, 300); startPeriodicSync(); }
+  else { stopPeriodicSync(); }
   const status = document.getElementById('settingsStatus');
   status.textContent = '✓ 設定已儲存';
   setTimeout(() => { status.textContent = ''; }, 2000);
@@ -740,7 +772,8 @@ function renderInputBar() {
   const canSend = inputVal.trim().length > 0 || !!pendingImage;
   let previewHtml = '';
   if (pendingImage) previewHtml = '<div class="img-preview-bar"><div class="img-preview-item"><img class="img-preview-thumb" src="' + pendingImage.dataUrl + '" alt="preview" /><span class="img-preview-name">' + escapeHtml(pendingImage.fileName) + '</span><button class="img-preview-remove" onclick="removeImage()" title="移除圖片">&times;</button></div></div>';
-  return '<div class="input-wrap"><div class="input-container">' + previewHtml + '<textarea id="chatInput" class="input-textarea" rows="1" placeholder="輸入訊息..." oninput="onInputChange(this)" onkeydown="onInputKeydown(event)">' + escapeHtml(inputVal) + '</textarea><div class="input-toolbar"><div class="input-toolbar-left"><button class="btn-toolbar" onclick="triggerImageUpload()" title="上傳圖片">' + icons.image + '</button><button class="btn-toolbar">' + icons.messageSquare + '</button></div><div class="input-toolbar-right"><button id="sendBtn" class="btn-send ' + (canSend ? 'active' : 'inactive') + '" ' + (canSend ? '' : 'disabled') + ' onclick="sendMessage()">' + icons.send + '</button></div></div></div></div>';
+  const placeholder = isPaused ? '⏸ AI 已暫停，訊息僅儲存不回覆' : '輸入訊息...';
+  return '<div class="input-wrap"><div class="input-container">' + previewHtml + '<textarea id="chatInput" class="input-textarea" rows="1" placeholder="' + placeholder + '" oninput="onInputChange(this)" onkeydown="onInputKeydown(event)">' + escapeHtml(inputVal) + '</textarea><div class="input-toolbar"><div class="input-toolbar-left"><button class="btn-toolbar" onclick="triggerImageUpload()" title="上傳圖片">' + icons.image + '</button><button class="btn-toolbar">' + icons.messageSquare + '</button></div><div class="input-toolbar-right"><button id="sendBtn" class="btn-send ' + (canSend ? 'active' : 'inactive') + '" ' + (canSend ? '' : 'disabled') + (isPaused ? ' title="已暫停（僅儲存訊息）"' : '') + ' onclick="sendMessage()">' + icons.send + '</button></div></div></div></div>';
 }
 
 function updateInputBarOnly() {
@@ -828,7 +861,7 @@ async function sendMessage() {
   if (!textarea) return;
   const content = textarea.value.trim();
   if ((!content && !pendingImage) || isSending) return;
-  if (!apiKey) { openSettings(); return; }
+  if (!apiKey && !isPaused) { openSettings(); return; }
   const wasWelcome = !getActiveConv() && !activeId && currentView === 'home';
   const userContent = pendingImage ? [{ type: 'text', text: content || ' ' }, { type: 'image_url', image_url: { url: pendingImage.dataUrl } }] : content;
   const userMsg = { id: Date.now().toString(), role: 'user', content: userContent, topicId: null };
@@ -846,6 +879,20 @@ async function sendMessage() {
   try {
     const conv = getActiveConv();
     if (!conv) throw new Error('對話已遺失');
+
+    // 暫停模式：僅儲存訊息，不呼叫任何 API
+    if (isPaused) {
+      const pauseMsg = '⏸ AI 已暫停，這條訊息已儲存但未回覆。前往設定關閉暫停即可恢復。';
+      conversations = conversations.map(c => c.id === convId ? {
+        ...c, messages: [...c.messages, { id: Date.now().toString() + 1, role: 'assistant', content: pauseMsg }],
+        updatedAt: new Date().toISOString()
+      } : c);
+      isTyping = false; isSending = false;
+      saveData(); saveTopics(); renderSidebar(); renderMain();
+      requestAnimationFrame(() => { const ta = document.getElementById('chatInput'); if (ta) ta.focus(); });
+      pushToGAS();
+      return; // 直接返回，不走 API
+    }
 
     // PHASE 1: 段落分類（僅純文字，非圖片）
     let classifications = [];
@@ -1027,6 +1074,22 @@ function closeSidebarMobile() {
   if (window.innerWidth < 768 && sidebarOpen) {
     toggleSidebar();
   }
+}
+
+const SYNC_INTERVAL_MS = 30000; // 30 秒
+let syncTimerId = null;
+
+function startPeriodicSync() {
+  stopPeriodicSync();
+  if (!gasUrl && !isGAS()) return;
+  syncTimerId = setInterval(() => {
+    // 只在頁面可見時拉取，避免背景浪費流量
+    if (!document.hidden) pullFromGAS();
+  }, SYNC_INTERVAL_MS);
+}
+
+function stopPeriodicSync() {
+  if (syncTimerId) { clearInterval(syncTimerId); syncTimerId = null; }
 }
 
 let isLight = localStorage.getItem('lilith-theme') === 'light';
